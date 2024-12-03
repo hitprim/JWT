@@ -1,4 +1,4 @@
-package jwtdb
+package postgres
 
 import (
 	"database/sql"

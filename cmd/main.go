@@ -1,17 +1,19 @@
 package main
 
 import (
-	jwtdb "JWT_Token/internal"
 	"JWT_Token/internal/jwt_token"
+	jwtdb "JWT_Token/internal/postgres"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
+	_ "github.com/lib/pq"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
-var dbURL = "postgres://pia:0000@localhost:5432/RefreshToken?sslmode=disable"
+var dbURL = "postgres://postgres:1234@localhost:5432/JWT?sslmode=disable"
 
 const ADD = "add"
 const UPDATE = "update"
@@ -49,10 +51,19 @@ func writeARTokens(w http.ResponseWriter, r *http.Request, guid, flag string) (s
 
 func getARTokens(w http.ResponseWriter, r *http.Request) {
 	//получаем guid
-	guid := r.URL.Query().Get("guid")
-	//создаем токены с флагом Добавить(ADD)
-	access, refresh, _ := writeARTokens(w, r, guid, ADD)
-	fmt.Fprintf(w, "Access token: %s\n Refresh token: %s", access, refresh)
+	vars := mux.Vars(r)
+	guid := vars["guid"]
+
+	guidRegex := `^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$`
+	match, _ := regexp.Match(guidRegex, []byte(guid))
+
+	if !match {
+		fmt.Fprintf(w, "Missmath with GUID form")
+	} else {
+		//создаем токены с флагом Добавить(ADD)
+		access, refresh, _ := writeARTokens(w, r, guid, ADD)
+		fmt.Fprintf(w, "Access token: %s\n Refresh token: %s", access, refresh)
+	}
 
 }
 
@@ -99,8 +110,8 @@ func refreshJWT(w http.ResponseWriter, r *http.Request) {
 func main() {
 
 	r := mux.NewRouter()
-	r.HandleFunc("/token?{guid}", getARTokens).Methods("GET")
-	r.HandleFunc("/refresh?{refresh}", refreshJWT).Methods("POST")
+	r.HandleFunc("/token/{guid}", getARTokens).Methods("GET")
+	r.HandleFunc("/refresh", refreshJWT).Methods("POST")
 
-	log.Fatalln(http.ListenAndServe(":8080", nil))
+	log.Fatalln(http.ListenAndServe(":8080", r))
 }

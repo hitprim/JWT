@@ -7,15 +7,16 @@ import (
 	"log"
 )
 
-func CreateJWT(ip, guid string) (string, string, error) {
+const SECRETE_KEY = "secrete-key"
 
+func CreateJWT(ip, guid string) (string, string, error) {
 	//создаем access токен при помощи паета golang-jwt
 	claims := jwt.MapClaims{
 		"ip":   ip,
 		"guid": guid,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
-	accessToken, err := token.SigningString()
+	accessToken, err := token.SignedString([]byte(SECRETE_KEY))
 	if err != nil {
 		log.Fatalln("Error to create access token: ", err)
 		return "", "", err
