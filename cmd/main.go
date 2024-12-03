@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
+	"strings"
 )
 
 var dbURL = "postgres://pia:0000@localhost:5432/RefreshToken?sslmode=disable"
@@ -18,12 +19,15 @@ const UPDATE = "update"
 func sentEmail() {}
 
 func writeARTokens(w http.ResponseWriter, r *http.Request, guid, flag string) (string, string, error) {
-	userIp := r.RemoteAddr
-	//jw := jwt_token.NewJWT()
+	userIp := strings.Split(r.RemoteAddr, ":")[0]
+
+	//создаем access и refresh токены непосредственно
 	access, refresh, err := jwt_token.CreateJWT(userIp, guid)
 	if err != nil {
 		log.Panicln("Error to create JWT or Refresh tokens: ", err)
 	}
+
+	//устанавливаем куки для access токена
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
 		Value:    access,
@@ -31,6 +35,7 @@ func writeARTokens(w http.ResponseWriter, r *http.Request, guid, flag string) (s
 		Path:     "/",
 	})
 
+	//в зависимости от флага: записываем в базу refresh токен или обновляем его
 	jwtDb := jwtdb.NewJWTDB(dbURL)
 	if flag == ADD {
 		jwtDb.CreateTable()
@@ -43,37 +48,49 @@ func writeARTokens(w http.ResponseWriter, r *http.Request, guid, flag string) (s
 }
 
 func getARTokens(w http.ResponseWriter, r *http.Request) {
+	//получаем guid
 	guid := r.URL.Query().Get("guid")
+	//создаем токены с флагом Добавить(ADD)
 	access, refresh, _ := writeARTokens(w, r, guid, ADD)
 	fmt.Fprintf(w, "Access token: %s\n Refresh token: %s", access, refresh)
 
 }
 
 func refreshJWT(w http.ResponseWriter, r *http.Request) {
-
+	//получаем рефреш токен
 	refreshTokenURL := r.URL.Query().Get("refresh")
-	jwtDb := jwtdb.NewJWTDB(dbURL)
 
+	//получаем guid из базы
+	jwtDb := jwtdb.NewJWTDB(dbURL)
 	guidFromDB, err := jwtDb.GetGUID(refreshTokenURL)
 	if err != nil {
 		log.Fatalln("Error to create Database: ", err)
 		return
 	}
 
+	//смотрим куки access токена
 	cookie, _ := r.Cookie("access_token")
+	// парсим токен чтобы получить ip пользователя
 	accessTokenCookie, _, _ := jwt.NewParser().ParseUnverified(cookie.Value, jwt.MapClaims{})
-	userIp := r.RemoteAddr
+	userIp := strings.Split(r.RemoteAddr, ":")[0]
 
 	if claims, ok := accessTokenCookie.Claims.(jwt.MapClaims); ok {
+		//если ip не совпадает с текущим, то отправляем оповещение на мыло
 		if claims["ip"].(string) != userIp {
 			sentEmail()
 			fmt.Fprintf(w, "Invalid user ip")
 		} else {
-			_, _, err := writeARTokens(w, r, guidFromDB, UPDATE)
-			if err != nil {
-				log.Panicln("Error to create JWT or Refresh tokens: ", err)
+			if claims["guid"] == guidFromDB {
+				// если ip совпадает, то создаем токены с флагом Обновить(UPDATE)
+				_, _, err := writeARTokens(w, r, guidFromDB, UPDATE)
+				if err != nil {
+					log.Panicln("Error to create JWT or Refresh tokens: ", err)
+				}
+				fmt.Fprintf(w, "Updated succesfully")
+			} else {
+				fmt.Fprintf(w, "Invalid refresh token")
+				return
 			}
-			fmt.Fprintf(w, "Updated succesfully")
 		}
 	}
 

@@ -7,16 +7,9 @@ import (
 	"log"
 )
 
-//type JWT struct {
-//}
-//
-//var jwtSecretKey = []byte("key")
-//
-//func NewJWT() JWT {
-//	return JWT
-//}
-
 func CreateJWT(ip, guid string) (string, string, error) {
+
+	//создаем access токен при помощи паета golang-jwt
 	claims := jwt.MapClaims{
 		"ip":   ip,
 		"guid": guid,
@@ -28,6 +21,7 @@ func CreateJWT(ip, guid string) (string, string, error) {
 		return "", "", err
 	}
 
+	//генерируем refresh токен
 	bufToken := make([]byte, 32)
 	rand.Read(bufToken)
 
